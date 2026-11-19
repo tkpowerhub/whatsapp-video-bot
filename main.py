@@ -29,7 +29,7 @@ import uuid
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, Request, Response
+from fastapi import BackgroundTasks, FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from video_edit import (
@@ -296,8 +296,15 @@ async def verify_webhook(request: Request):
 
 
 @app.post("/webhook")
-async def receive_webhook(request: Request):
-    """Incoming WhatsApp messages (POST)."""
+async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
+    """Incoming WhatsApp messages (POST).
+
+    Returns 200 at once and processes in the background: Meta times out
+    a webhook after ~20s, but a video download + ffmpeg edit + upload
+    takes far longer. The old code awaited the whole edit before
+    answering, so Meta marked the delivery failed and retried it —
+    the user got duplicate replies / duplicate edited videos.
+    """
     try:
         body = await request.json()
     except Exception:
@@ -308,8 +315,30 @@ async def receive_webhook(request: Request):
         for change in entry.get("changes", []):
             value = change.get("value", {})
             for message in value.get("messages", []):
-                await handle_message(message)
+                # Skip a message Meta retries after a timeout, so the user
+                # never gets the same edit twice.
+                msg_id = message.get("id", "")
+                now = time.time()
+                if msg_id and msg_id in SEEN_MESSAGES:
+                    if now - SEEN_MESSAGES[msg_id] < 600:
+                        continue
+                if msg_id:
+                    SEEN_MESSAGES[msg_id] = now
+                background_tasks.add_task(_handle_message_safe, message)
     return Response(status_code=200)
+
+
+# Message ids already accepted (10-min window) — guards against Meta
+# redelivering the same webhook after a timeout.
+SEEN_MESSAGES: dict[str, float] = {}
+
+
+async def _handle_message_safe(message: dict) -> None:
+    """Run handle_message in the background; never crash the worker."""
+    try:
+        await handle_message(message)
+    except Exception as exc:  # noqa: BLE001 — log and move on
+        print(f"[bot] background handle_message failed: {type(exc).__name__}: {exc}")
 
 
 async def handle_message(message: dict) -> None:
