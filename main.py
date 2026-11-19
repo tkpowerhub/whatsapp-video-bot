@@ -30,7 +30,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from video_edit import (
     EditError,
@@ -227,6 +227,52 @@ def apply_edit(action: dict, src: Path, dst: Path) -> Path:
 @app.get("/")
 async def root():
     return {"status": "ok", "bot": "Tk PowerHub WhatsApp Video-Edit Bot"}
+
+
+PRIVACY_HTML = """<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8">
+<title>Privacy Policy — Tk PowerHub Video Edit Bot</title>
+</head>
+<body>
+<h1>Privacy Policy — Tk PowerHub Video Edit Bot</h1>
+<p>Last updated: 19 November 2026.</p>
+<p>Tk PowerHub Video Edit Bot is a WhatsApp bot that edits videos you
+send to it (trim, compress, HD, text, brand). This policy explains what
+happens to your data.</p>
+<h2>What we collect</h2>
+<ul>
+<li>The video you send to the bot, and any caption or command text
+you send with it (for example "compress" or "trim 0:05 0:20").</li>
+<li>Your WhatsApp phone number, which WhatsApp provides so the bot
+can reply to you.</li>
+</ul>
+<h2>How we use it</h2>
+<p>Your video and command are used only to edit the video and send the
+edited video back to you on WhatsApp. We do not use your videos or
+phone number for advertising or for any other purpose.</p>
+<h2>Storage</h2>
+<p>Videos are stored only temporarily on the bot server while they are
+being edited, and briefly afterwards (up to 10 minutes) so that a
+follow-up command you send can be applied to the same video. Edited
+videos are deleted from the server after they are sent back to you.
+Server storage is temporary and is wiped when the server restarts or
+is redeployed.</p>
+<h2>Sharing</h2>
+<p>We do not sell or share your videos or phone number with anyone,
+except WhatsApp/Meta, which delivers the messages between you and the
+bot.</p>
+<h2>Contact</h2>
+<p>Questions about this policy: tkpowerhub@gmail.com — Tk PowerHub.</p>
+</body>
+</html>
+"""
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy():
+    """Privacy policy page (required by Meta to take the app Live)."""
+    return PRIVACY_HTML
 
 
 @app.get("/health")
